@@ -1,9 +1,14 @@
 add_executable(main
-    test.cpp
+    main.cpp
 )
 
 # target_include_directories(main PUBLIC 
 #     ${CMAKE_SOURCE_DIR}/external/asio-1.18.0/include}
 # )
 
-include_directories(${CMAKE_SOURCE_DIR}/external/asio/asio/include)
+target_link_libraries(main
+    PUBLIC
+    libconnection
+)
+
+add_subdirectory(connection)
