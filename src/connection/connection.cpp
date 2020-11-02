@@ -41,18 +41,62 @@ std::shared_ptr<asio::ip::tcp::socket> Connection::get_socket()
     return m_socket_connection;
 }
 
-void Connection::grab_some_data()
+std::map<std::vector<char>, int> Connection::grab_some_data()
 {
+    std::map<std::vector<char>, int> container_message;
     m_socket_connection->async_read_some(asio::buffer(m_read_buffer.data(), m_read_buffer.size()),
         [&](std::error_code ec, std::size_t length)
         {
             if (!ec)
             {
                 std::cout << "\n\nRead " << length << " bytes\n\n";
-                for (int i = 0; i < length; i++)
-                    std::cout << m_read_buffer[i];
+                // for (int i = 0; i < length; i++)
+                //     std::cout << m_read_buffer[i];
+                container_message.insert({m_read_buffer, length});
                 grab_some_data();
             }
         }
     );
+    return container_message;
+}
+
+std::map<std::vector<char>, int> Connection::get_request()
+{
+    std::map<std::vector<char>, int> container_message = grab_some_data();
+    asio::streambuf bRequest;
+    std::ostream request_stream(&bRequest);
+    request_stream << "GET /" << m_path << " HTTP/1.0\r\n";
+    request_stream << "Host: " << m_url << "\r\n";
+    request_stream << "Accept: */*\r\n";
+    request_stream << "Connection: close\r\n\r\n";;
+    // Send the request
+    try
+    {
+        int i = m_socket_connection->write_some(asio::buffer(bRequest.data(), bRequest.size()), ec);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    // Program does something while in the other thread data is captured
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+
+    // Read the response and print it
+    size_t bytes = m_socket_connection->available();
+    std::cout << "Bytes Available: " << bytes << std::endl;
+
+    return container_message;
+}
+
+void Connection::print_to_console(std::map<std::vector<char>, int> request)
+{
+    // Form the request, stablishing Connection:close to close the socket after transmiting
+    if (m_socket_connection->is_open())
+    {
+        for (auto const& [read_buffer, length] : request)
+        {
+            for (int i = 0; i < length; i++)
+                std::cout << read_buffer[i];
+        }   
+    }
 }

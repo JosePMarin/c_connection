@@ -1,4 +1,4 @@
-#include "utils.hpp"
+#include "common.hpp"
 
 class Connection 
 {
@@ -9,6 +9,7 @@ private:
     std::shared_ptr<asio::ip::tcp::socket> m_socket_connection;
     std::mutex m_mutex;
     std::vector<char> m_read_buffer;
+    std::map<std::vector<char>, int>  grab_some_data(); 
 
 public:
     
@@ -26,5 +27,7 @@ public:
 
     std::shared_ptr<asio::ip::tcp::socket> get_socket(); 
 
-    void grab_some_data(); 
+    std::map<std::vector<char>, int> get_request();
+
+    void print_to_console(std::map<std::vector<char>, int> request);
 };
