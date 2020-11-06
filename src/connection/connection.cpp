@@ -34,6 +34,7 @@ void Connection::stop_connection()
     m_socket_connection->close();
     context->stop();
     if (thread_context.joinable()) thread_context.join();
+    if (listener_thread.joinable()) listener_thread.join();
 }
 
 std::shared_ptr<asio::ip::tcp::socket> Connection::get_socket()
@@ -41,28 +42,47 @@ std::shared_ptr<asio::ip::tcp::socket> Connection::get_socket()
     return m_socket_connection;
 }
 
-std::map<std::vector<char>, int> Connection::grab_some_data()
+void Connection::grab_some_data(std::map<std::vector<char>, int> &container_message)
 {
-    std::map<std::vector<char>, int> container_message;
-    m_socket_connection->async_read_some(asio::buffer(m_read_buffer.data(), m_read_buffer.size()),
-        [&](std::error_code ec, std::size_t length)
-        {
-            if (!ec)
+    std::scoped_lock lock(m_mutex);
+    bool stop_stream = false;
+    bool wait = true;
+    while(!stop_stream)
+    {
+        int container_size = container_message.size();
+        std::unique_lock<std::mutex> lck(shared_mut);
+        m_socket_connection->async_read_some(asio::buffer(m_read_buffer.data(), m_read_buffer.size()),
+            [&](std::error_code ec, std::size_t length)
             {
-                std::cout << "\n\nRead " << length << " bytes\n\n";
-                // for (int i = 0; i < length; i++)
-                //     std::cout << m_read_buffer[i];
-                container_message.insert({m_read_buffer, length});
-                grab_some_data();
+                if (!ec)
+                {
+                    std::cout << "\n\nRead " << length << " bytes\n\n";
+                    container_message.insert({m_read_buffer, length});
+                    wait = false;
+                    std::cout << "after notify" << std::endl;
+                } else {
+                    stop_stream = true;
+                }
+                m_cv.notify_all();
             }
+        );
+        // control block 
+        if (wait)
+            m_cv.wait(lck);        
+        if (container_size == container_message.size())
+        {
+            stop_stream = true;
         }
-    );
-    return container_message;
+    }
+    
+    
+    
 }
 
 std::map<std::vector<char>, int> Connection::get_request()
 {
-    std::map<std::vector<char>, int> container_message = grab_some_data();
+    std::map<std::vector<char>, int> container_message;
+    listener_thread = std::thread(&Connection::grab_some_data, this, std::ref(container_message));
     asio::streambuf bRequest;
     std::ostream request_stream(&bRequest);
     request_stream << "GET /" << m_path << " HTTP/1.0\r\n";
@@ -79,7 +99,8 @@ std::map<std::vector<char>, int> Connection::get_request()
         std::cerr << e.what() << '\n';
     }
     // Program does something while in the other thread data is captured
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::unique_lock<std::mutex> lck(shared_mut);
+    m_cv.wait(lck);
 
     // Read the response and print it
     size_t bytes = m_socket_connection->available();
@@ -90,6 +111,7 @@ std::map<std::vector<char>, int> Connection::get_request()
 
 void Connection::print_to_console(std::map<std::vector<char>, int> request)
 {
+    std::scoped_lock lock(m_mutex);
     // Form the request, stablishing Connection:close to close the socket after transmiting
     if (m_socket_connection->is_open())
     {

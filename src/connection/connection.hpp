@@ -1,5 +1,6 @@
 #include "common.hpp"
 
+
 class Connection 
 {
 private:
@@ -8,8 +9,11 @@ private:
     std::string m_path;
     std::shared_ptr<asio::ip::tcp::socket> m_socket_connection;
     std::mutex m_mutex;
+    std::mutex shared_mut;
     std::vector<char> m_read_buffer;
-    std::map<std::vector<char>, int>  grab_some_data(); 
+    void grab_some_data(std::map<std::vector<char>, int> &container_message);
+    std::condition_variable m_cv;
+    std::thread listener_thread;
 
 public:
     
@@ -21,7 +25,7 @@ public:
 
     Connection(std::string url, std::string path); 
 
-    ~Connection();
+    virtual ~Connection();
 
     void stop_connection(); 
 
