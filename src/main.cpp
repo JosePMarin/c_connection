@@ -8,7 +8,7 @@ int main()
 
     Connection con(url, path);
 
-    auto connection_socket = con.get_socket();
+    // auto connection_socket = con.get_socket(); // if we want to get socket pointer
     con.print_to_console(con.get_request());
 
     con.stop_connection();
