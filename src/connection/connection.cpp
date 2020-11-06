@@ -44,39 +44,19 @@ std::shared_ptr<asio::ip::tcp::socket> Connection::get_socket()
 
 void Connection::grab_some_data(std::map<std::vector<char>, int> &container_message)
 {
-    std::scoped_lock lock(m_mutex);
-    bool stop_stream = false;
-    bool wait = true;
-    while(!stop_stream)
-    {
-        int container_size = container_message.size();
-        std::unique_lock<std::mutex> lck(shared_mut);
-        m_socket_connection->async_read_some(asio::buffer(m_read_buffer.data(), m_read_buffer.size()),
-            [&](std::error_code ec, std::size_t length)
-            {
-                if (!ec)
-                {
-                    std::cout << "\n\nRead " << length << " bytes\n\n";
-                    container_message.insert({m_read_buffer, length});
-                    wait = false;
-                    std::cout << "after notify" << std::endl;
-                } else {
-                    stop_stream = true;
-                }
-                m_cv.notify_all();
-            }
-        );
-        // control block 
-        if (wait)
-            m_cv.wait(lck);        
-        if (container_size == container_message.size())
+    m_socket_connection->async_read_some(asio::buffer(m_read_buffer.data(), m_read_buffer.size()),
+        [&](std::error_code ec, std::size_t length)
         {
-            stop_stream = true;
+            std::scoped_lock lock(m_mutex);
+            if (!ec)
+            {
+                std::cout << "\n\nRead " << length << " bytes\n\n";
+                container_message.insert({m_read_buffer, length});
+                grab_some_data(container_message);
+            } 
+            m_cv.notify_all();
         }
-    }
-    
-    
-    
+    );
 }
 
 std::map<std::vector<char>, int> Connection::get_request()
@@ -98,7 +78,7 @@ std::map<std::vector<char>, int> Connection::get_request()
     {
         std::cerr << e.what() << '\n';
     }
-    // Program does something while in the other thread data is captured
+    // Wait for data
     std::unique_lock<std::mutex> lck(shared_mut);
     m_cv.wait(lck);
 
